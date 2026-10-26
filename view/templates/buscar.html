@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Resultados | Regla Medidora{% endblock %}
+
+{% block content %}
+<section class="results-page">
+    <a class="back" href="/">← Nueva búsqueda</a>
+    
+    <div class="results-top">
+        <div>
+            <p class="eyebrow">RESULTADOS DEL INVENTARIO</p>
+            <h1>Coincidencias para <em>“{{ consulta }}”</em></h1>
+        </div>
+        <a class="button" href="/nueva">+ Añadir nuevo objeto</a>
+    </div>
+    
+    <form class="filters" action="/buscar" method="get">
+        <input type="hidden" name="q" value="{{ consulta }}">
+        
+        <label>Buscar en
+            <select name="campo">
+                <option value="todos" {% if campo == 'todos' %}selected{% endif %}>Nombre y referencia</option>
+                <option value="nombre" {% if campo == 'nombre' %}selected{% endif %}>Solo nombre</option>
+                <option value="referencia" {% if campo == 'referencia' %}selected{% endif %}>Solo referencia</option>
+            </select>
+        </label>
+        
+        <label>Ordenar por
+            <select name="orden">
+                <option value="recientes" {% if orden == 'recientes' %}selected{% endif %}>Más recientes</option>
+                <option value="antiguos" {% if orden == 'antiguos' %}selected{% endif %}>Más antiguos</option>
+                <option value="nombre" {% if orden == 'nombre' %}selected{% endif %}>Nombre A-Z</option>
+            </select>
+        </label>
+        
+        <button class="filter-button" type="submit">Aplicar filtros</button>
+    </form>
+    
+    <div class="result-summary">
+        <span>{{ objetos|length }} resultados</span>
+        <a href="/">Limpiar</a>
+    </div>
+    
+    {% if objetos %}
+        <div class="object-grid">
+            {% for objeto in objetos %}
+                <a class="object-card" href="/objetos/{{ objeto.objeto_id }}">
+                    <div class="card-image">
+                        <img src="/objetos/{{ objeto.objeto_id }}/imagen/resultado" alt="{{ objeto.nombre }}">
+                    </div>
+                    <div class="card-body">
+                        <div>
+                            <h3>{{ objeto.nombre }}</h3>
+                            <p>{{ objeto.referencia or 'Sin referencia' }}</p>
+                        </div>
+                        <strong>{{ '%.1f'|format(objeto.ancho_mm) }} × {{ '%.1f'|format(objeto.alto_mm) }} <small>mm</small></strong>
+                    </div>
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty">
+            <span>⌕</span>
+            <h3>No hemos encontrado ese objeto</h3>
+            <p>Prueba con otro nombre o referencia.</p>
+            <a class="button" href="/nueva">Añadir nuevo objeto</a>
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

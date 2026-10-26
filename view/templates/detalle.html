@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+
+{% block title %}{{ objeto.nombre }} | Regla Medidora{% endblock %}
+
+{% block content %}
+<section class="detail-page">
+    <a class="back" href="/">← Volver a buscar</a>
+    
+    <div class="detail-heading">
+        <div>
+            <p class="eyebrow">FICHA DE OBJETO</p>
+            <h1>{{ objeto.nombre }}</h1>
+            <p class="muted">{{ objeto.referencia or 'Sin referencia' }} · {{ objeto.nombre_archivo }} · {{ objeto.fecha_creacion }}</p>
+            <p class="object-description">{{ objeto.descripcion or 'Sin descripción' }}</p>
+        </div>
+        <div class="detail-actions">
+            <button class="detail-button annotation-button" id="open-annotations" type="button">Anotaciones</button>
+            <a class="detail-button edit-button" href="/objetos/{{ objeto.objeto_id }}/modificar">Modificar</a>
+            <form action="/objetos/{{ objeto.objeto_id }}/eliminar" method="post" onsubmit="return confirm('¿Seguro que quieres eliminar este objeto? Esta acción no se puede deshacer.');">
+                <button class="detail-button delete-button" type="submit">Eliminar</button>
+            </form>
+        </div>
+    </div>
+    
+    <div class="detail-layout">
+        <div class="image-viewer">
+            <div class="viewer-toolbar">
+                <div class="viewer-nav">
+                    <button class="viewer-control" id="previous-image" type="button">←</button>
+                    <span id="image-position">7 / 7</span>
+                    <button class="viewer-control" id="next-image" type="button">→</button>
+                </div>
+                <div class="viewer-zoom">
+                    <button class="viewer-control" id="zoom-out" type="button">−</button>
+                    <button class="viewer-control fit-control" id="zoom-fit" type="button">Ajustar</button>
+                    <button class="viewer-control" id="zoom-in" type="button">+</button>
+                </div>
+            </div>
+            
+            <div class="image-tabs" role="tablist">
+                {% for tipo, nombre in [('original','Original'),('a4','A4 detectado'),('folio','Folio corregido'),('color','Color'),('bordes','DBG bordes'),('mascara','Máscara'),('resultado','Resultado')] %}
+                    <button class="image-tab{% if tipo == 'resultado' %} active{% endif %}" type="button" data-type="{{ tipo }}">{{ nombre }}</button>
+                {% endfor %}
+            </div>
+            
+            <div class="result-image" id="image-stage">
+                <button class="stage-arrow stage-previous" id="stage-previous" type="button">‹</button>
+                <img id="main-object-image" src="/objetos/{{ objeto.objeto_id }}/imagen/resultado" alt="Resultado de {{ objeto.nombre }}">
+                <button class="stage-arrow stage-next" id="stage-next" type="button">›</button>
+            </div>
+            
+            <div class="viewer-caption">
+                <strong id="image-title">Resultado</strong>
+                <span>Usa las flechas o selecciona una vista</span>
+            </div>
+        </div>
+        
+        <aside class="stats">
+            <p class="eyebrow">TODAS LAS MEDIDAS</p>
+            <dl>
+                <div>
+                    <dt>Ancho</dt>
+                    <dd>{{ '%.1f'|format(objeto.ancho_mm) }} mm</dd>
+                </div>
+                <div>
+                    <dt>Alto</dt>
+                    <dd>{{ '%.1f'|format(objeto.alto_mm) }} mm</dd>
+                </div>
+                <div>
+                    <dt>Área</dt>
+                    <dd>{{ '%.1f'|format(objeto.area_mm2) }} mm²</dd>
+                </div>
+                <div>
+                    <dt>Perímetro</dt>
+                    <dd>{{ '%.1f'|format(objeto.perimetro_mm) }} mm</dd>
+                </div>
+                <div>
+                    <dt>Ancho en imagen</dt>
+                    <dd>{{ '%.1f'|format(objeto.ancho_px or 0) }} px</dd>
+                </div>
+                <div>
+                    <dt>Alto en imagen</dt>
+                    <dd>{{ '%.1f'|format(objeto.alto_px or 0) }} px</dd>
+                </div>
+                <div>
+                    <dt>Ángulo</dt>
+                    <dd>{{ '%.1f'|format(objeto.angulo or 0) }}°</dd>
+                </div>
+                <div>
+                    <dt>Centro</dt>
+                    <dd>({{ '%.1f'|format(objeto.centro_x or 0) }}, {{ '%.1f'|format(objeto.centro_y or 0) }}) px</dd>
+                </div>
+            </dl>
+        </aside>
+    </div>
+</section>
+
+<div class="annotation-modal" id="annotation-modal" hidden>
+    <div class="annotation-panel">
+        <div class="annotation-header">
+            <div>
+                <p class="eyebrow">NOTAS MANUALES</p>
+                <h2>Anotaciones</h2>
+            </div>
+            <button class="annotation-close" id="close-annotations" type="button">×</button>
+        </div>
+        
+        <p class="annotation-help">Escribe o dibuja sobre la pizarra.</p>
+        
+        <div class="paint-tools">
+            <label>Color<input id="annotation-color" type="color" value="#18221f"></label>
+            <label>Grosor<input id="annotation-size" type="range" min="1" max="40" value="4"></label>
+            <button class="paint-tool" id="annotation-eraser" type="button">Goma</button>
+            <button class="paint-tool" id="annotation-undo" type="button">Deshacer</button>
+            <button class="paint-tool" id="clear-annotations" type="button">Limpiar</button>
+        </div>
+        
+        <canvas id="annotation-canvas" width="900" height="500"></canvas>
+        
+        <div class="annotation-tools">
+            <button class="detail-button edit-button" id="save-annotations" type="button">Guardar anotaciones</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function(){
+    const images = [['original','Original'],['a4','A4 detectado'],['folio','Folio corregido'],['color','Color'],['bordes','DBG bordes'],['mascara','Máscara'],['resultado','Resultado']];
+    let current = 6;
+    let zoom = 1;
+    const image = document.getElementById('main-object-image');
+    const stage = document.getElementById('image-stage');
+    
+    function render() {
+        const item = images[current];
+        image.src = '/objetos/{{ objeto.objeto_id }}/imagen/' + item[0];
+        image.alt = item[1] + ' de {{ objeto.nombre }}';
+        document.getElementById('image-title').textContent = item[1];
+        document.getElementById('image-position').textContent = (current + 1) + ' / ' + images.length;
+        
+        if (zoom === 1) {
+            image.style.width = '100%';
+            image.style.maxWidth = '100%';
+            image.style.maxHeight = '100%';
+        } else {
+            image.style.width = (zoom * 100) + '%';
+            image.style.maxWidth = 'none';
+            image.style.maxHeight = 'none';
+        }
+        document.querySelectorAll('.image-tab').forEach((tab, index) => tab.classList.toggle('active', index === current));
+    }
+    
+    function select(index) {
+        current = (index + images.length) % images.length;
+        zoom = 1;
+        render();
+    }
+    
+    document.querySelectorAll('.image-tab').forEach((tab, index) => tab.onclick = () => select(index));
+    document.getElementById('previous-image').onclick = () => select(current - 1);
+    document.getElementById('next-image').onclick = () => select(current + 1);
+    document.getElementById('stage-previous').onclick = () => select(current - 1);
+    document.getElementById('stage-next').onclick = () => select(current + 1);
+    document.getElementById('zoom-in').onclick = () => { zoom = Math.min(zoom + .25, 3); render(); };
+    document.getElementById('zoom-out').onclick = () => { zoom = Math.max(zoom - .25, .5); render(); };
+    document.getElementById('zoom-fit').onclick = () => { zoom = 1; render(); };
+    
+    document.addEventListener('keydown', e => {
+        if (e.key === 'ArrowLeft') select(current - 1);
+        if (e.key === 'ArrowRight') select(current + 1);
+    });
+    
+    stage.addEventListener('wheel', e => {
+        e.preventDefault();
+        zoom = Math.max(.5, Math.min(3, zoom + (e.deltaY < 0 ? .25 : -.25)));
+        render();
+    }, { passive: false });
+    
+    render();
+})();
+</script>
+
+<script>
+(function(){
+    const modal = document.getElementById('annotation-modal');
+    const canvas = document.getElementById('annotation-canvas');
+    const ctx = canvas.getContext('2d');
+    let drawing = false;
+    
+    function resizeCanvas() {
+        const ratio = window.devicePixelRatio || 1;
+        const box = canvas.getBoundingClientRect();
+        canvas.width = box.width * ratio;
+        canvas.height = box.height * ratio;
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#18221f';
+    }
+    
+    function loadSaved() {
+        const saved = new Image();
+        saved.onload = () => {
+            const box = canvas.getBoundingClientRect();
+            ctx.drawImage(saved, 0, 0, box.width, box.height);
+        };
+        saved.src = '/objetos/{{ objeto.objeto_id }}/imagen/anotaciones?' + Date.now();
+    }
+    
+    function point(event) {
+        const box = canvas.getBoundingClientRect();
+        return { x: event.clientX - box.left, y: event.clientY - box.top };
+    }
+    
+    canvas.addEventListener('pointerdown', e => {
+        drawing = true;
+        const p = point(e);
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        canvas.setPointerCapture(e.pointerId);
+    });
+    
+    canvas.addEventListener('pointermove', e => {
+        if (!drawing) return;
+        const p = point(e);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+    });
+    
+    canvas.addEventListener('pointerup', () => drawing = false);
+    
+    document.getElementById('open-annotations').onclick = () => {
+        modal.hidden = false;
+        resizeCanvas();
+        loadSaved();
+    };
+    
+    document.getElementById('close-annotations').onclick = () => modal.hidden = true;
+    
+    document.getElementById('clear-annotations').onclick = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    };
+    
+    document.getElementById('save-annotations').onclick = async () => {
+        const body = new FormData();
+        body.append('imagen', canvas.toDataURL('image/png'));
+        const response = await fetch('/objetos/{{ objeto.objeto_id }}/anotaciones', { method: 'POST', body });
+        if (response.ok) {
+            modal.hidden = true;
+            alert('Anotaciones guardadas.');
+        }
+    };
+})();
+</script>
+
+<script>
+(function(){
+    const canvas = document.getElementById('annotation-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const color = document.getElementById('annotation-color');
+    const size = document.getElementById('annotation-size');
+    const eraser = document.getElementById('annotation-eraser');
+    const undo = document.getElementById('annotation-undo');
+    let history = [];
+    let isEraser = false;
+    
+    function saveState() {
+        history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        if (history.length > 30) history.shift();
+    }
+    
+    color.addEventListener('input', () => {
+        isEraser = false;
+        eraser.classList.remove('active');
+        ctx.strokeStyle = color.value;
+    });
+    
+    size.addEventListener('input', () => ctx.lineWidth = Number(size.value));
+    
+    eraser.onclick = () => {
+        isEraser = !isEraser;
+        eraser.classList.toggle('active', isEraser);
+        ctx.strokeStyle = isEraser ? '#fff' : color.value;
+    };
+    
+    undo.onclick = () => {
+        const previous = history.pop();
+        if (previous) ctx.putImageData(previous, 0, 0);
+    };
+    
+    canvas.addEventListener('pointerdown', saveState, true);
+    
+    document.getElementById('clear-annotations').addEventListener('click', () => {
+        saveState();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    });
+})();
+</script>
+{% endblock %}

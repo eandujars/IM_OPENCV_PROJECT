@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Regla Medidora{% endblock %}</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20261001-4">
+    <script src="/static/annotations.js?v=20261004-1" defer></script>
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="/">
+            <img src="/static/imagenes/logo.png" alt="Logo" class="brand-logo">
+            <span>Regla Medidora</span>
+        </a>
+        <nav>
+            <a href="/biblioteca">Biblioteca</a>
+            <a class="nav-action" href="/nueva">+ Nueva medición</a>
+        </nav>
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

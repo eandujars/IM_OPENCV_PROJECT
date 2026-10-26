@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Buscar objetos | Regla Medidora{% endblock %}
+
+{% block content %}
+<section class="search-page">
+    <div class="search-brand">
+        <img src="/static/imagenes/logo.png" alt="Logo" class="search-logo">
+        <p class="eyebrow">INVENTARIO DE OBJETOS</p>
+        <h1>¿Qué quieres<br><em>encontrar?</em></h1>
+        <p class="intro">Busca cualquier pieza por nombre o referencia.</p>
+    </div>
+    
+    <form class="search-form" action="/buscar" method="get">
+        <div class="search-field">
+            <span>⌕</span>
+            <input name="q" placeholder="Nombre o referencia" aria-label="Nombre o referencia" autofocus required>
+            <button type="submit" aria-label="Buscar">→</button>
+        </div>
+    </form>
+    
+    <div class="search-actions">
+        <a class="button" href="/nueva">+ Añadir nuevo objeto</a>
+        <span>O registra una pieza nueva en tu inventario.</span>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Biblioteca | Regla Medidora{% endblock %}
+
+{% block content %}
+<section class="results-page">
+    <a class="back" href="/">← Volver a buscar</a>
+    
+    <div class="results-top">
+        <div>
+            <p class="eyebrow">INVENTARIO COMPLETO</p>
+            <h1>Todos tus <em>objetos</em></h1>
+        </div>
+        <a class="button" href="/nueva">+ Añadir nuevo objeto</a>
+    </div>
+    
+    <div class="result-summary">
+        <span>{{ objetos|length }} objetos guardados</span>
+        <a href="/">Buscar por nombre o referencia</a>
+    </div>
+    
+    {% if objetos %}
+        <div class="object-grid">
+            {% for objeto in objetos %}
+                <a class="object-card" href="/objetos/{{ objeto.objeto_id }}">
+                    <div class="card-image">
+                        <img src="/objetos/{{ objeto.objeto_id }}/imagen/resultado" alt="{{ objeto.nombre }}">
+                    </div>
+                    <div class="card-body">
+                        <div>
+                            <h3>{{ objeto.nombre }}</h3>
+                            <p>{{ objeto.referencia or 'Sin referencia' }}</p>
+                        </div>
+                        <strong>{{ '%.1f'|format(objeto.ancho_mm) }} × {{ '%.1f'|format(objeto.alto_mm) }} <small>mm</small></strong>
+                    </div>
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty">
+            <span>∅</span>
+            <h3>La biblioteca está vacía</h3>
+            <p>Añade tu primer objeto para verlo aquí.</p>
+            <a class="button" href="/nueva">Añadir nuevo objeto</a>
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Modificar {{ objeto.nombre }} | Regla Medidora{% endblock %}
+
+{% block content %}
+<section class="edit-page">
+    <a class="back" href="/objetos/{{ objeto.objeto_id }}">← Volver al objeto</a>
+    
+    <div class="edit-heading">
+        <p class="eyebrow">EDITAR OBJETO</p>
+        <h1>Actualizar<br><em>datos.</em></h1>
+        <p class="intro">Cambia cualquier dato o sustituye la fotografía para recalcular sus medidas.</p>
+    </div>
+    
+    <form class="edit-form" action="/objetos/{{ objeto.objeto_id }}/modificar" method="post" enctype="multipart/form-data">
+        <div class="form-fields">
+            <label>Nombre
+                <input name="nombre" type="text" value="{{ objeto.nombre }}" required>
+            </label>
+            <label>Referencia
+                <input name="referencia" type="text" value="{{ objeto.referencia }}">
+            </label>
+            <label class="full-field">Descripción
+                <textarea name="descripcion" rows="3">{{ objeto.descripcion }}</textarea>
+            </label>
+        </div>
+        
+        <div class="current-file">
+            <span class="eyebrow">IMAGEN ACTUAL</span>
+            <img src="/objetos/{{ objeto.objeto_id }}/imagen/resultado" alt="{{ objeto.nombre }}">
+            <label class="button" for="imagen">Sustituir imagen</label>
+            <input id="imagen" name="imagen" type="file" accept="image/jpeg,image/png">
+            <span id="file-name" class="upload-note">Si no eliges otra, se conservará la actual</span>
+        </div>
+        
+        <div class="edit-actions">
+            <a class="button secondary-button" href="/objetos/{{ objeto.objeto_id }}">Cancelar</a>
+            <button class="button" type="submit">Guardar cambios <span>→</span></button>
+        </div>
+    </form>
+</section>
+
+<script>
+document.getElementById('imagen').addEventListener('change', function(){
+    document.getElementById('file-name').textContent = this.files[0]?.name || 'Si no eliges otra, se conservará la actual';
+});
+</script>
+{% endblock %}

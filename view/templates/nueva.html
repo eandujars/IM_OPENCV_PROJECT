@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Añadir objeto | Regla Medidora{% endblock %}
+
+{% block content %}
+<section class="upload-page">
+    <div class="upload-copy">
+        <a class="back" href="/">← Volver a buscar</a>
+        <p class="eyebrow page-eyebrow">NUEVO OBJETO</p>
+        <h1>Una pieza<br><em>más.</em></h1>
+        <p class="intro">Dale un nombre, una referencia, una descripción y una imagen.</p>
+        
+        <div class="steps">
+            <div>
+                <b>01</b>
+                <span>Folio A4 completo<br><small>Debe verse el borde entero</small></span>
+            </div>
+            <div>
+                <b>02</b>
+                <span>Buena luz<br><small>Evita reflejos y sombras duras</small></span>
+            </div>
+            <div>
+                <b>03</b>
+                <span>Una sola pieza<br><small>El objeto debe quedar separado</small></span>
+            </div>
+        </div>
+    </div>
+    
+    <form class="object-form" action="/nueva" method="post" enctype="multipart/form-data">
+        <div class="form-fields">
+            <label>Nombre
+                <input name="nombre" type="text" placeholder="Ej. Auriculares negros" required>
+            </label>
+            <label>Referencia
+                <input name="referencia" type="text" placeholder="Ej. AUD-001">
+            </label>
+            <label class="full-field">Descripción
+                <textarea name="descripcion" rows="3" placeholder="Material, color o detalles del objeto"></textarea>
+            </label>
+        </div>
+        
+        <div class="dropzone compact">
+            <div class="upload-icon">↑</div>
+            <h2>Abre una imagen local</h2>
+            <p>JPG, JPEG o PNG · máximo 20 MB</p>
+            <label class="button" for="imagen">Elegir imagen</label>
+            <input id="imagen" name="imagen" type="file" accept="image/jpeg,image/png" required>
+            <span id="file-name" class="upload-note">Todavía no has seleccionado ningún archivo</span>
+        </div>
+        
+        <button class="button save-button" type="submit">Guardar y medir <span>→</span></button>
+    </form>
+</section>
+
+<script>
+document.getElementById('imagen').addEventListener('change', function(){
+    document.getElementById('file-name').textContent = this.files[0]?.name || 'Todavía no has seleccionado ningún archivo';
+});
+</script>
+{% endblock %}
