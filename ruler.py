@@ -1,6 +1,4 @@
 import os
-import sys
-import glob
 import cv2
 import numpy as np
 
@@ -28,7 +26,7 @@ UMBRAL_CLARO_DEFAULT = 10.0
 
 class VisorVentana:
     """Maneja el zoom, scroll y ajuste automático para una ventana"""
-    def __init__(self, nombre_ventana, imagen, win_w=900, win_h=850):
+    def __init__(self, nombre_ventana, imagen, win_w=550, win_h=450):
         self.nombre_ventana = nombre_ventana
         
         # Convertir a 3 canales BGR si la imagen es en escala de grises / máscara
@@ -38,12 +36,8 @@ class VisorVentana:
             self.img_orig = imagen.copy()
             
         self.h, self.w = self.img_orig.shape[:2]
-
-        # Ventanas de tamaño fijo y apaisado para evitar ventanas muy altas.
-        # La imagen se adapta dentro de la ventana conservando su proporción.
-        # Esto solo afecta a la visualización, no a la imagen usada para medir.
-        self.win_w = 900
-        self.win_h = 700
+        self.win_w = win_w
+        self.win_h = win_h
         
         # Estado del arrastre (Scroll)
         self.dragging = False
@@ -54,14 +48,14 @@ class VisorVentana:
         self.ajustar()
 
     def ajustar(self):
-        """Restablece la vista para ajustar la imagen completa a la ventana."""
+        """Restablece la vista para ajustar la imagen completa a la ventana"""
         self.x1 = 0.0
         self.y1 = 0.0
         self.x2 = float(self.w)
         self.y2 = float(self.h)
 
     def zoom_at(self, wx, wy, factor):
-        """Aplica zoom in/out centrado en la posición del ratón."""
+        """Aplica zoom in/out centrado en la posición del ratón"""
         ix = self.x1 + (wx / float(self.win_w)) * (self.x2 - self.x1)
         iy = self.y1 + (wy / float(self.win_h)) * (self.y2 - self.y1)
         
@@ -105,7 +99,7 @@ class VisorVentana:
         self.y1, self.y2 = max(0.0, ny1), min(float(self.h), ny2)
 
     def mover(self, dwx, dwy):
-        """Desplaza la imagen (Scroll) en función del arrastre del ratón."""
+        """Scroll en función del arrastre del ratón."""
         scale_x = (self.roi_start[2] - self.roi_start[0]) / float(self.win_w)
         scale_y = (self.roi_start[3] - self.roi_start[1]) / float(self.win_h)
         
@@ -144,17 +138,7 @@ class VisorVentana:
         iy2 = max(iy1 + 1, min(self.h, iy2))
         
         recorte = self.img_orig[iy1:iy2, ix1:ix2]
-        # Reservar la franja inferior para la ayuda y conservar la proporción.
-        area_h = self.win_h - 22
-        escala = min(self.win_w / recorte.shape[1], area_h / recorte.shape[0])
-        nuevo_w = max(1, int(round(recorte.shape[1] * escala)))
-        nuevo_h = max(1, int(round(recorte.shape[0] * escala)))
-        imagen_redimensionada = cv2.resize(
-            recorte, (nuevo_w, nuevo_h), interpolation=cv2.INTER_LINEAR
-        )
-        vista = np.zeros((self.win_h, self.win_w, 3), dtype=np.uint8)
-        x_offset = (self.win_w - nuevo_w) // 2
-        vista[0:nuevo_h, x_offset:x_offset + nuevo_w] = imagen_redimensionada
+        vista = cv2.resize(recorte, (self.win_w, self.win_h), interpolation=cv2.INTER_LINEAR)
         
         # Barra de ayuda rápida inferior
         cv2.rectangle(vista, (0, self.win_h - 22), (self.win_w, self.win_h), (30, 30, 30), -1)
@@ -193,7 +177,7 @@ def ordenar_puntos(puntos: np.ndarray) -> np.ndarray:
     """Ordena cuatro puntos como: TL, TR, BR, BL."""
     puntos = np.asarray(puntos, dtype=np.float32)
     if puntos.shape != (4, 2):
-        raise ValueError("Se esperaban exactamente cuatro puntos.")
+        raise ValueError("Se esperaban exactamente cuatro puntos")
 
     suma = puntos.sum(axis=1)
     diferencia = np.diff(puntos, axis=1).ravel()
@@ -211,7 +195,7 @@ def ordenar_puntos(puntos: np.ndarray) -> np.ndarray:
 # ============================================================
 
 def detectar_folio_a4(imagen: np.ndarray):
-    """Detecta el A4 en la imagen y devuelve sus esquinas y contorno."""
+    """Detecta el A4 en la imagen y devuelve sus esquinas y contorno"""
     alto, ancho = imagen.shape[:2]
     suavizada = cv2.GaussianBlur(imagen, (5, 5), 0)
     lab = cv2.cvtColor(suavizada, cv2.COLOR_BGR2LAB).astype(np.float32)
@@ -260,7 +244,7 @@ def detectar_folio_a4(imagen: np.ndarray):
 
 
 def corregir_perspectiva(imagen: np.ndarray, esquinas: np.ndarray) -> np.ndarray:
-    """Transforma el A4 detectado a un lienzo normalizado."""
+    """Transforma el A4 detectado a un lienzo normalizado de 210 x 297 mm (5 px/mm)"""
     destino = np.array([
         [0, 0],
         [A4_ANCHO_PX - 1, 0],
@@ -277,7 +261,7 @@ def corregir_perspectiva(imagen: np.ndarray, esquinas: np.ndarray) -> np.ndarray
 # ============================================================
 
 def _estimar_plano_fondo(canal: np.ndarray, mascara_valida: np.ndarray) -> np.ndarray:
-    """Estima un plano lineal de iluminación descartando valores atípicos."""
+    """Estima un plano lineal de iluminación descartando valores atípicos"""
     ys, xs = np.nonzero(mascara_valida)
     if len(xs) < 50:
         return np.full_like(canal, np.median(canal), dtype=np.float32)
@@ -305,7 +289,7 @@ def _estimar_plano_fondo(canal: np.ndarray, mascara_valida: np.ndarray) -> np.nd
 
 
 def segmentar_objeto(imagen: np.ndarray):
-    """Segmenta objetos evitando sombras difusas y soportando transparencias."""
+    """Segmenta objetos evitando sombras difusas y soportando transparencias"""
     alto, ancho = imagen.shape[:2]
     
     suavizada = cv2.GaussianBlur(imagen, (7, 7), 0)
@@ -336,7 +320,7 @@ def segmentar_objeto(imagen: np.ndarray):
     mascara_base = cv2.bitwise_or(m_color, m_oscuro)
     mascara_base = cv2.bitwise_or(mascara_base, m_claro)
 
-    # Cierre morfológico vertical para unir piezas de objetos alargados (como bolígrafos)
+    # Cierre morfológico vertical para unir piezas de objetos alargados
     kernel_vertical = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 41))
     mascara = cv2.morphologyEx(mascara_base, cv2.MORPH_CLOSE, kernel_vertical)
 
@@ -365,7 +349,7 @@ def segmentar_objeto(imagen: np.ndarray):
 # ============================================================
 
 def detectar_objeto(mascara: np.ndarray):
-    """Selecciona el contorno exterior válido más grande."""
+    """Selecciona el contorno exterior válido más grande"""
     contornos, jerarquia = cv2.findContours(mascara, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     if not contornos:
         return None, None
@@ -403,9 +387,9 @@ def detectar_objeto(mascara: np.ndarray):
 
 
 def medir_objeto(contorno, info_contornos=None, escala=ESCALA_DEFAULT):
-    """Calcula medidas métricas reales del objeto."""
+    """Calcula medidas métricas reales del objeto"""
     if contorno is None:
-        raise ValueError("Contorno inválido para medir.")
+        raise ValueError("Contorno inválido para medir")
 
     if info_contornos is None:
         area_px2 = cv2.contourArea(contorno)
@@ -446,19 +430,16 @@ def medir_objeto(contorno, info_contornos=None, escala=ESCALA_DEFAULT):
 # VISUALIZACIÓN INTERACTIVA DE IMÁGENES Y MÁSCARAS
 # ============================================================
 
-def procesar_imagen_especifica(ruta_imagen: str):
-    """Carga, procesa y abre las ventanas con zoom, scroll y fit interactivo."""
-    nombre_archivo = os.path.basename(ruta_imagen)
-    imagen = cv2.imread(ruta_imagen)
-    
+def procesar_imagen(imagen: np.ndarray, nombre_archivo: str):
+    """Procesa una imagen ya cargada. Comparte el mismo algoritmo entre cámara y estática"""
     if imagen is None:
-        print(f"Error: No se pudo cargar la imagen '{ruta_imagen}'.")
+        print(f"Error: imagen vacía para '{nombre_archivo}'.")
         return
 
     print(f"\n--- Procesando: {nombre_archivo} ---")
     esquinas, contorno_a4 = detectar_folio_a4(imagen)
     if esquinas is None:
-        print("Error: No se ha podido detectar el folio A4 en la imagen.")
+        print("Error: No se ha podido detectar el folio A4 en la imagen")
         cv2.imshow("Imagen Original (A4 no detectado)", imagen)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
@@ -481,21 +462,35 @@ def procesar_imagen_especifica(ruta_imagen: str):
         cv2.drawContours(resultado, [contorno_obj], -1, (0, 255, 0), 3)
         cv2.drawContours(resultado, [medidas["caja"].reshape(-1, 1, 2)], -1, (255, 0, 0), 2)
 
-        x_text = max(10, int(medidas["centro"][0] - 90))
-        y_text = int(medidas["y"] - 15)
-        if y_text < 30:
-            y_text = int(medidas["y"] + medidas["alto_px"] + 30)
-
+        # Etiqueta de dimensiones en la esquina superior izquierda
         texto = f"{medidas['ancho_mm']:.1f} x {medidas['alto_mm']:.1f} mm"
-        cv2.putText(resultado, texto, (x_text, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 4, cv2.LINE_AA)
-        cv2.putText(resultado, texto, (x_text, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
+        fuente = cv2.FONT_HERSHEY_SIMPLEX
+        escala_texto = 1.0
+        grosor_texto = 2
+        margen_texto = 18
+        (texto_w, texto_h), linea_base = cv2.getTextSize(
+            texto, fuente, escala_texto, grosor_texto
+        )
+        caja_x1 = 12
+        caja_y1 = 12
+        caja_x2 = caja_x1 + texto_w + margen_texto * 2
+        caja_y2 = caja_y1 + texto_h + linea_base + margen_texto
+
+        # Fondo negro sólido para que el texto se lea sobre cualquier fondo
+        cv2.rectangle(resultado, (caja_x1, caja_y1), (caja_x2, caja_y2),
+                      (0, 0, 0), cv2.FILLED)
+        cv2.putText(
+            resultado, texto,
+            (caja_x1 + margen_texto, caja_y1 + margen_texto + texto_h),
+            fuente, escala_texto, (255, 255, 255), grosor_texto, cv2.LINE_AA
+        )
 
         print(f"-> Dimensiones: {medidas['ancho_mm']:.1f} x {medidas['alto_mm']:.1f} mm")
         print(f"-> Área: {medidas['area_mm2']:.1f} mm² | Perímetro: {medidas['perimetro_mm']:.1f} mm")
     else:
-        print("-> Folio detectado, pero no se encontró un objeto válido.")
+        print("-> Folio detectado, pero no se encontró un objeto válido")
 
-    # Crear visores interactivos para cada una de las máscaras e imágenes intermedias
+    # Crear visores interactivos para cada una de las máscaras
     imagenes_dict = {
         f"1. A4 Detectado ({nombre_archivo})": img_a4,
         "2. Folio Corregido": folio,
@@ -518,7 +513,7 @@ def procesar_imagen_especifica(ruta_imagen: str):
     print(" - Doble Clic / Teclas 'A', 'R' o Espacio: Ajustar vista (Reset Zoom)")
     print(" - Tecla 'Q' o ESC: Cerrar todas las ventanas")
 
-    # Bucle de renderizado continuo para responder a ratón y teclado
+    # Bucle para responder a ratón y teclado
     while True:
         for v in visores:
             cv2.imshow(v.nombre_ventana, v.obtener_vista())
@@ -538,55 +533,170 @@ def procesar_imagen_especifica(ruta_imagen: str):
 
     cv2.destroyAllWindows()
 
+def modo_camara(indice=0):
+    """Cámara con guía A4 fija en píxeles y comprobación de centrado"""
 
-def menu_seleccion(directorio_imagenes="imagenes"):
-    """Selecciona la imagen mediante argumento de consola o menú interactivo."""
-    if len(sys.argv) > 1:
-        param = sys.argv[1]
-        ruta = param if os.path.exists(param) else os.path.join(directorio_imagenes, param)
-        if os.path.exists(ruta):
-            procesar_imagen_especifica(ruta)
-        else:
-            print(f"Error: No existe el archivo '{ruta}'.")
+    if os.name == "nt":
+        camara = cv2.VideoCapture(indice, cv2.CAP_DSHOW)
+    else:
+        camara = cv2.VideoCapture(indice)
+
+    if not camara.isOpened():
+        print(f"No se pudo abrir la cámara con índice {indice}.")
+        camara.release()
         return
 
-    extensiones = ('*.jpg', '*.jpeg', '*.png', '*.bmp', '*.webp')
-    archivos = []
-    for ext in extensiones:
-        archivos.extend(glob.glob(os.path.join(directorio_imagenes, ext)))
-        archivos.extend(glob.glob(os.path.join(directorio_imagenes, ext.upper())))
+    camara.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    camara.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-    archivos = sorted(list(set(archivos)))
+    ancho = int(camara.get(cv2.CAP_PROP_FRAME_WIDTH))
+    alto = int(camara.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    if not archivos:
-        print(f"No se encontraron imágenes dentro de la carpeta '{directorio_imagenes}'.")
-        return
+    print(f"Cámara abierta: índice {indice}, resolución recibida {ancho}x{alto}")
+    print("Coloca el folio A4 dentro del rectángulo")
+    print("El rectángulo se pondrá VERDE cuando esté correctamente centrado")
+    print("ESPACIO: medir | Q/ESC: salir")
 
-    print("\n" + "=" * 45)
-    print("      SELECCIONA LA IMAGEN A PROCESAR")
-    print("=" * 45)
-    for idx, ruta in enumerate(archivos, 1):
-        print(f"  [{idx}] {os.path.basename(ruta)}")
-    print("=" * 45)
+    # --------------------------------------------------------
+    # GUÍA FIJA A4: DIMENSIONES EXACTAS EN PÍXELES
+    # --------------------------------------------------------
+    GUIA_ANCHO = 420
+    GUIA_ALTO = 594
+
+    x1 = (ancho - GUIA_ANCHO) // 2
+    y1 = (alto - GUIA_ALTO) // 2
+    x2 = x1 + GUIA_ANCHO
+    y2 = y1 + GUIA_ALTO
+
+    guia = np.array([
+        [x1, y1],
+        [x2, y1],
+        [x2, y2],
+        [x1, y2]
+    ], dtype=np.float32)
+
+    # Tolerancia de colocación en píxeles
+    TOLERANCIA = 35
+
+    nombre = "RULER BASE - Cámara"
+    cv2.namedWindow(nombre, cv2.WINDOW_NORMAL)
+
+    ultimo_frame = None
+    correctamente_centrado = False
 
     try:
-        entrada = input(f"Introduce un número (1-{len(archivos)}) o el nombre del archivo: ").strip()
-        
-        if entrada.isdigit():
-            num = int(entrada) - 1
-            if 0 <= num < len(archivos):
-                procesar_imagen_especifica(archivos[num])
+        while True:
+            ok, frame = camara.read()
+
+            if not ok or frame is None:
+                print("No se pudo recibir un fotograma")
+                break
+
+            alto_real, ancho_real = frame.shape[:2]
+
+            # Adaptar la guía si el controlador entrega otra resolución
+            escala_x = ancho_real / float(ancho)
+            escala_y = alto_real / float(alto)
+
+            guia_actual = guia.copy()
+            guia_actual[:, 0] *= escala_x
+            guia_actual[:, 1] *= escala_y
+
+            vista = frame.copy()
+
+            # Detectar el folio A4
+            esquinas, contorno_a4 = detectar_folio_a4(frame)
+
+            correctamente_centrado = False
+
+            if esquinas is not None:
+                esquinas = ordenar_puntos(esquinas).astype(np.float32)
+
+                # Comparar cada esquina detectada con la guía fija
+                distancias = np.linalg.norm(esquinas - guia_actual, axis=1)
+
+                correctamente_centrado = (
+                    np.max(distancias) <= TOLERANCIA * max(escala_x, escala_y)
+                )
+
+            color = (0, 255, 0) if correctamente_centrado else (0, 0, 255)
+
+            # Dibujar siempre el mismo rectángulo
+            guia_int = guia_actual.astype(np.int32)
+            cv2.polylines(
+                vista,
+                [guia_int.reshape(-1, 1, 2)],
+                True,
+                color,
+                3,
+                cv2.LINE_AA
+            )
+
+            if correctamente_centrado:
+                estado = "A4 CORRECTAMENTE CENTRADO"
+                cv2.putText(
+                    vista, estado, (20, 35),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.75,
+                    (0, 255, 0), 2, cv2.LINE_AA
+                )
             else:
-                print("Número fuera de rango.")
-        else:
-            ruta_directa = os.path.join(directorio_imagenes, entrada)
-            if os.path.exists(ruta_directa):
-                procesar_imagen_especifica(ruta_directa)
-            else:
-                print(f"El archivo '{entrada}' no existe.")
-    except (KeyboardInterrupt, EOFError):
-        print("\nCancelado.")
+                estado = "COLOCA EL A4 DENTRO DEL CUADRO"
+                cv2.putText(
+                    vista, estado, (20, 35),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.65,
+                    (0, 0, 255), 2, cv2.LINE_AA
+                )
+
+            cv2.putText(
+                vista,
+                "ESPACIO: medir   Q/ESC: salir",
+                (20, alto_real - 20),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA
+            )
+
+            cv2.imshow(nombre, vista)
+
+            tecla = cv2.waitKey(1) & 0xFF
+
+            if tecla in (ord('q'), ord('Q'), 27):
+                break
+
+            elif tecla == 32:
+                if correctamente_centrado:
+                    ultimo_frame = frame.copy()
+                    cv2.destroyWindow(nombre)
+                    procesar_imagen(ultimo_frame, "captura_camara")
+                    cv2.namedWindow(nombre, cv2.WINDOW_NORMAL)
+                else:
+                    print("El folio todavía no está correctamente centrado")
+
+    finally:
+        camara.release()
+        cv2.destroyAllWindows()
+
+
+
+def main():
+    print("\n" + "=" * 45)
+    print("             RULER BASE")
+    print("=" * 45)
+    print("1. Medición en tiempo real con cámara")
+    print("0. Salir")
+    opcion = input("Elige una opción (0/1): ").strip()
+    if opcion == "1":
+        entrada = input("Índice de cámara [0]: ").strip()
+        indice = int(entrada) if entrada.isdigit() else 0
+        modo_camara(indice)
+    elif opcion == "0":
+        return
+    else:
+        print("Opción no válida")
+
 
 
 if __name__ == "__main__":
-    menu_seleccion("imagenes")
+    main()
