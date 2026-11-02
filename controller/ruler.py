@@ -40,21 +40,12 @@ def ordenar_puntos(puntos: np.ndarray) -> np.ndarray:
     ], dtype=np.float32)
 
 
-def _interseccion_rectas(p1, d1, p2, d2):
-    """Devuelve la intersección de dos rectas parametrizadas."""
-    matriz = np.column_stack((d1, -d2))
-    if abs(np.linalg.det(matriz)) < 1e-6:
-        return None
-    t = np.linalg.solve(matriz, p2 - p1)
-    return p1 + t[0] * d1
-
-
 # ============================================================
 # DETECCIÓN DEL FOLIO A4
 # ============================================================
 
 def detectar_folio_a4(imagen: np.ndarray):
-    """Detecta el A4 en la imagen y devuelve sus esquinas y contorno."""
+    """Detecta el A4 en la imagen y devuelve sus esquinas y contorno"""
     alto, ancho = imagen.shape[:2]
     suavizada = cv2.GaussianBlur(imagen, (5, 5), 0)
     lab = cv2.cvtColor(suavizada, cv2.COLOR_BGR2LAB).astype(np.float32)
@@ -102,6 +93,42 @@ def detectar_folio_a4(imagen: np.ndarray):
     return puntos, contorno_principal
 
 
+def detectar_folio_centrado(datos_imagen: bytes) -> bool:
+    """Comprueba si un frame de cámara contiene el A4 dentro de la guía."""
+    try:
+        imagen = cv2.imdecode(
+            np.frombuffer(datos_imagen, dtype=np.uint8), cv2.IMREAD_COLOR
+        )
+    except cv2.error:
+        return False
+
+    if imagen is None:
+        return False
+
+    try:
+        esquinas, _ = detectar_folio_a4(imagen)
+    except cv2.error:
+        return False
+    if esquinas is None:
+        return False
+
+    alto, ancho = imagen.shape[:2]
+    escala_x = ancho / 1280.0
+    escala_y = alto / 720.0
+    guia = np.array([
+        [(1280 - 420) / 2, (720 - 594) / 2],
+        [(1280 + 420) / 2, (720 - 594) / 2],
+        [(1280 + 420) / 2, (720 + 594) / 2],
+        [(1280 - 420) / 2, (720 + 594) / 2],
+    ], dtype=np.float32)
+    guia[:, 0] *= escala_x
+    guia[:, 1] *= escala_y
+    distancias = np.linalg.norm(
+        ordenar_puntos(esquinas) - guia, axis=1
+    )
+    return bool(np.max(distancias) <= 35 * max(escala_x, escala_y))
+
+
 def corregir_perspectiva(imagen: np.ndarray, esquinas: np.ndarray) -> np.ndarray:
     """Transforma el A4 detectado a un lienzo normalizado."""
     destino = np.array([
@@ -116,11 +143,11 @@ def corregir_perspectiva(imagen: np.ndarray, esquinas: np.ndarray) -> np.ndarray
 
 
 # ============================================================
-# MODELADO DE FONDO Y SEGMENTACIÓN ROBUSTA
+# MODELADO DE FONDO Y SEGMENTACIÓN
 # ============================================================
 
 def _estimar_plano_fondo(canal: np.ndarray, mascara_valida: np.ndarray) -> np.ndarray:
-    """Estima un plano lineal de iluminación descartando valores atípicos."""
+    """Estima un plano lineal de iluminación descartando valores atípicos"""
     ys, xs = np.nonzero(mascara_valida)
     if len(xs) < 50:
         return np.full_like(canal, np.median(canal), dtype=np.float32)
@@ -148,7 +175,7 @@ def _estimar_plano_fondo(canal: np.ndarray, mascara_valida: np.ndarray) -> np.nd
 
 
 def segmentar_objeto(imagen: np.ndarray):
-    """Segmenta objetos evitando sombras difusas y soportando transparencias."""
+    """Segmenta objetos evitando sombras difusas y soportando transparencias"""
     alto, ancho = imagen.shape[:2]
     
     suavizada = cv2.GaussianBlur(imagen, (7, 7), 0)
@@ -179,7 +206,7 @@ def segmentar_objeto(imagen: np.ndarray):
     mascara_base = cv2.bitwise_or(m_color, m_oscuro)
     mascara_base = cv2.bitwise_or(mascara_base, m_claro)
 
-    # Cierre morfológico vertical para unir piezas de objetos alargados (como bolígrafos)
+    # Cierre morfológico vertical para unir piezas de objetos alargados
     kernel_vertical = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 41))
     mascara = cv2.morphologyEx(mascara_base, cv2.MORPH_CLOSE, kernel_vertical)
 
@@ -208,7 +235,7 @@ def segmentar_objeto(imagen: np.ndarray):
 # ============================================================
 
 def detectar_objeto(mascara: np.ndarray):
-    """Selecciona el contorno exterior válido más grande."""
+    """Selecciona el contorno exterior válido más grande"""
     contornos, jerarquia = cv2.findContours(mascara, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     if not contornos:
         return None, None
@@ -246,7 +273,7 @@ def detectar_objeto(mascara: np.ndarray):
 
 
 def medir_objeto(contorno, info_contornos=None, escala=ESCALA_DEFAULT):
-    """Calcula medidas métricas reales del objeto."""
+    """Calcula medidas métricas reales del objeto"""
     if contorno is None:
         raise ValueError("Contorno inválido para medir.")
 
@@ -289,8 +316,21 @@ def medir_objeto(contorno, info_contornos=None, escala=ESCALA_DEFAULT):
 # PIPELINE PRINCIPAL WEB
 # ============================================================
 
+def _codificar_imagen(imagen: np.ndarray, extension: str) -> bytes:
+    """Codifica una imagen OpenCV y convierte los fallos en errores del pipeline"""
+    ok, buffer = cv2.imencode(extension, imagen)
+    if not ok:
+        raise ValueError(f"No se pudo codificar la imagen como {extension}.")
+    return buffer.tobytes()
+
+
 def procesar_imagen_web(datos_imagen: bytes):
-    """Ejecuta el pipeline completo y retorna resultados estructurados con todas las imágenes de depuración."""
+    """Procesa una imagen subida y devuelve medidas e imágenes para la interfaz web.
+
+    La versión interactiva de ``ruler.py`` utiliza ventanas de OpenCV. En la web
+    esas ventanas no son válidas: el resultado se devuelve como bytes para que
+    FastAPI y las plantillas puedan mostrar cada vista en el navegador
+    """
     imagen = cv2.imdecode(np.frombuffer(datos_imagen, dtype=np.uint8), cv2.IMREAD_COLOR)
     if imagen is None:
         raise ValueError("No se pudo decodificar la imagen.")
@@ -303,7 +343,7 @@ def procesar_imagen_web(datos_imagen: bytes):
     cv2.drawContours(img_a4, [contorno_a4.astype(np.int32)], -1, (0, 255, 0), 3)
 
     folio = corregir_perspectiva(imagen, esquinas)
-    mascara, imagen_color_bruto, mascara_bruto = segmentar_objeto(folio)
+    mascara, imagen_color_bruto, _ = segmentar_objeto(folio)
     contorno_obj, info_contornos = detectar_objeto(mascara)
 
     if contorno_obj is None:
@@ -315,16 +355,28 @@ def procesar_imagen_web(datos_imagen: bytes):
     cv2.drawContours(resultado, [contorno_obj], -1, (0, 255, 0), 3)
     cv2.drawContours(resultado, [medidas["caja"].reshape(-1, 1, 2)], -1, (255, 0, 0), 2)
 
-    # Dibuja las dimensiones (ancho y alto en mm) sobre la imagen de resultado
-    x_text = max(10, int(medidas["centro"][0] - 90))
-    y_text = int(medidas["y"] - 15)
-    if y_text < 30:
-        y_text = int(medidas["y"] + medidas["alto_px"] + 30)
-
-    texto_dimensiones = f"{medidas['ancho_mm']:.1f} x {medidas['alto_mm']:.1f} mm"
-    # Texto con borde blanco y relleno rojo para máxima visibilidad
-    cv2.putText(resultado, texto_dimensiones, (x_text, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 4, cv2.LINE_AA)
-    cv2.putText(resultado, texto_dimensiones, (x_text, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
+    # Mantiene la etiqueta legible aunque el objeto ocupe toda la fotografía.
+    texto = f"{medidas['ancho_mm']:.1f} x {medidas['alto_mm']:.1f} mm"
+    fuente = cv2.FONT_HERSHEY_SIMPLEX
+    grosor = 2
+    margen = 18
+    (texto_ancho, texto_alto), linea_base = cv2.getTextSize(
+        texto, fuente, 1.0, grosor
+    )
+    x1, y1 = 12, 12
+    x2 = x1 + texto_ancho + margen * 2
+    y2 = y1 + texto_alto + linea_base + margen
+    cv2.rectangle(resultado, (x1, y1), (x2, y2), (0, 0, 0), cv2.FILLED)
+    cv2.putText(
+        resultado,
+        texto,
+        (x1 + margen, y1 + margen + texto_alto),
+        fuente,
+        1.0,
+        (255, 255, 255),
+        grosor,
+        cv2.LINE_AA,
+    )
 
     gris = cv2.cvtColor(folio, cv2.COLOR_BGR2GRAY)
     bordes = cv2.Canny(gris, 50, 150)
@@ -333,12 +385,12 @@ def procesar_imagen_web(datos_imagen: bytes):
         "medidas": medidas,
         "imagenes": {
             "original": datos_imagen,
-            "a4": cv2.imencode('.jpg', img_a4)[1].tobytes(),
-            "folio": cv2.imencode('.jpg', folio)[1].tobytes(),
-            "color": cv2.imencode('.png', imagen_color_bruto)[1].tobytes(),
-            "bordes": cv2.imencode('.png', bordes)[1].tobytes(),
-            "mascara": cv2.imencode('.png', mascara)[1].tobytes(),
-            "resultado": cv2.imencode('.jpg', resultado)[1].tobytes(),
+            "a4": _codificar_imagen(img_a4, ".jpg"),
+            "folio": _codificar_imagen(folio, ".jpg"),
+            "color": _codificar_imagen(imagen_color_bruto, ".png"),
+            "bordes": _codificar_imagen(bordes, ".png"),
+            "mascara": _codificar_imagen(mascara, ".png"),
+            "resultado": _codificar_imagen(resultado, ".jpg"),
         }
     }
 
@@ -350,6 +402,7 @@ __all__ = [
     "A4_ANCHO_PX",
     "A4_ALTO_PX",
     "detectar_folio_a4",
+    "detectar_folio_centrado",
     "corregir_perspectiva",
     "segmentar_objeto",
     "detectar_objeto",

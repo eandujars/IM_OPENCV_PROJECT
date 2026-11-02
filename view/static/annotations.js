@@ -54,7 +54,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         if (response.ok) {
             modal.hidden = true;
-            alert('Anotaciones guardadas.');
         }
     });
 });

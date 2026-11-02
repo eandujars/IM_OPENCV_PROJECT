@@ -4,7 +4,7 @@
 
 {% block content %}
 <section class="detail-page">
-    <a class="back" href="/">← Volver a buscar</a>
+    <a class="back" href="/biblioteca">← Volver a la biblioteca</a>
     
     <div class="detail-heading">
         <div>
@@ -123,6 +123,14 @@
     </div>
 </div>
 
+<div class="notice-modal" id="annotation-notice" hidden>
+    <div class="notice-panel" role="status" aria-live="polite">
+        <p class="eyebrow">ANOTACIONES</p>
+        <h2>Anotaciones guardadas</h2>
+        <button class="button" id="close-annotation-notice" type="button">Aceptar</button>
+    </div>
+</div>
+
 <script>
 (function(){
     const images = [['original','Original'],['a4','A4 detectado'],['folio','Folio corregido'],['color','Color'],['bordes','DBG bordes'],['mascara','Máscara'],['resultado','Resultado']];
@@ -236,6 +244,9 @@
     };
     
     document.getElementById('close-annotations').onclick = () => modal.hidden = true;
+    document.getElementById('close-annotation-notice').onclick = () => {
+        document.getElementById('annotation-notice').hidden = true;
+    };
     
     document.getElementById('clear-annotations').onclick = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -247,7 +258,7 @@
         const response = await fetch('/objetos/{{ objeto.objeto_id }}/anotaciones', { method: 'POST', body });
         if (response.ok) {
             modal.hidden = true;
-            alert('Anotaciones guardadas.');
+            document.getElementById('annotation-notice').hidden = false;
         }
     };
 })();

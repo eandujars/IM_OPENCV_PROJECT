@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from controller.annotations import normalizar_anotacion
+from controller.ruler import detectar_folio_centrado
 from model.model import ObjetoModel
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -53,8 +54,24 @@ async def biblioteca(request: Request):
 
 
 @router.get("/nueva", response_class=HTMLResponse)
-async def nueva_medicion(request: Request):
-	return templates.TemplateResponse(request=request, name="nueva.html")
+async def nueva_medicion(request: Request, error: str = ""):
+	return templates.TemplateResponse(
+		request=request,
+		name="nueva.html",
+		context={"error": error},
+	)
+
+
+@router.post("/camara/detectar")
+async def detectar_folio_en_camara(imagen: UploadFile = File(...)):
+	datos = await imagen.read()
+	if not datos:
+		return {"detectado": False}
+
+	try:
+		return {"detectado": detectar_folio_centrado(datos)}
+	except (ValueError, TypeError):
+		return {"detectado": False}
 
 
 @router.post("/nueva")
@@ -72,8 +89,9 @@ async def guardar_medicion(
 		objeto_id = objetos.procesar_y_guardar(
 			nombre, referencia, descripcion, imagen.filename or "objeto", datos
 		)
-	except ValueError:
-		return RedirectResponse("/nueva?error=measure", status_code=303)
+	except ValueError as error:
+		codigo = "object" if "ningún objeto" in str(error) else "folio"
+		return RedirectResponse(f"/nueva?error={codigo}", status_code=303)
 
 	return RedirectResponse(f"/objetos/{objeto_id}", status_code=303)
 
