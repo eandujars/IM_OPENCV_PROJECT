@@ -431,7 +431,7 @@ def medir_objeto(contorno, info_contornos=None, escala=ESCALA_DEFAULT):
 # ============================================================
 
 def procesar_imagen(imagen: np.ndarray, nombre_archivo: str):
-    """Procesa una imagen ya cargada. Comparte el mismo algoritmo entre cámara y estática"""
+    """Procesa la imagen"""
     if imagen is None:
         print(f"Error: imagen vacía para '{nombre_archivo}'.")
         return
